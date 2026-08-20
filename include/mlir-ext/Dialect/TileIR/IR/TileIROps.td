@@ -22,6 +22,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 
 include "triton/Dialect/Triton/IR/TritonTypes.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
+include "triton/Dialect/TritonGPU/IR/TritonGPUTypes.td"
 
 include "mlir-ext/Dialect/TileIR/IR/TileIRDialect.td"
 include "mlir-ext/Dialect/TileIR/IR/TileIRAttrDefs.td"
@@ -43,7 +44,7 @@ class TileIR_Op<string mnemonic, list<Trait> traits = []> :
 // ---------------------------------------------------------------------------
 // tile.alloc — Allocate a buffer in a specific memory space
 // ---------------------------------------------------------------------------
-def TileIR_AllocOp : TileIR_Op<"alloc", [MemoryEffects<[MemAlloc]>]> {
+def TileIR_AllocOp : TileIR_Op<"alloc", [Pure]> {
   let summary = "Allocate a buffer in a specific memory space";
   let description = [{
     Allocates a buffer with given shape, dtype, and memory space attributes.
@@ -131,6 +132,26 @@ def TileIR_LocalPtrOp : TileIR_Op<"local_ptr", [Pure]> {
 }
 
 // ---------------------------------------------------------------------------
+// tile.get_memdesc - Bridge a TileIR buffer to a TritonGPU descriptor
+// ---------------------------------------------------------------------------
+def TileIR_GetMemDescOp : TileIR_Op<"get_memdesc", [Pure]> {
+  let summary = "Bridge a TileIR buffer to a TritonGPU memory descriptor";
+  let description = [{
+    Materializes the descriptor view required by existing TritonGPU operations
+    while the allocation remains represented as a target-independent
+    `!tile.buf`. A target conversion replaces this bridge with the converted
+    descriptor value.
+  }];
+
+  let arguments = (ins TileIR_BufType:$source);
+  let results = (outs TTG_MemDescType:$result);
+
+  let assemblyFormat = [{
+    $source attr-dict `:` type($source) `->` type($result)
+  }];
+}
+
+// ---------------------------------------------------------------------------
 // tile.gm_offset — Compute global memory address with strides
 // ---------------------------------------------------------------------------
 def TileIR_GmOffsetOp : TileIR_Op<"gm_offset", [Pure, SameVariadicOperandSize]> {
@@ -164,7 +185,7 @@ def TileIR_GmOffsetOp : TileIR_Op<"gm_offset", [Pure, SameVariadicOperandSize]> 
 // ---------------------------------------------------------------------------
 // tile.copy — Copy data between memory regions with layout conversion
 // ---------------------------------------------------------------------------
-def TileIR_CopyOp : TileIR_Op<"copy", [MemoryEffects<[MemRead, MemWrite]>]> {
+def TileIR_CopyOp : TileIR_Op<"copy", [Pure, MemoryEffects<[MemWrite]>]> {
   let summary = "Copy data between memory regions with optional layout conversion";
   let description = [{
     Copies data from source to destination, optionally performing layout
@@ -180,7 +201,6 @@ def TileIR_CopyOp : TileIR_Op<"copy", [MemoryEffects<[MemRead, MemWrite]>]> {
   let arguments = (ins
     AnyType:$src,
     AnyType:$dst,
-    Variadic<I32>:$indices,
     OptionalAttr<TileIR_Engine>:$engine,
     OptionalAttr<TileIR_Layout>:$src_layout,
     OptionalAttr<TileIR_NZLayoutAttr>:$dst_nz_layout,
@@ -189,7 +209,7 @@ def TileIR_CopyOp : TileIR_Op<"copy", [MemoryEffects<[MemRead, MemWrite]>]> {
   );
 
   let assemblyFormat = [{
-    $src `->` $dst (`[` $indices^ `]`)? attr-dict `:` type($src) `,` type($dst)
+    $src `->` $dst attr-dict `:` type($src) `,` type($dst)
   }];
 }
 
@@ -478,7 +498,7 @@ def TileIR_ToTensorOp : TileIR_Op<"to_tensor", [Pure]> {
 // ---------------------------------------------------------------------------
 // tile.store_tensor — Store a tensor into a buffer
 // ---------------------------------------------------------------------------
-def TileIR_StoreTensorOp : TileIR_Op<"store_tensor", [MemoryEffects<[MemRead, MemWrite]>]> {
+def TileIR_StoreTensorOp : TileIR_Op<"store_tensor", [Pure, MemoryEffects<[MemWrite]>]> {
   let summary = "Store a tensor value into a buffer";
   let description = [{
     Writes a tensor value back into a mutable buffer. Inverse of

@@ -12,4 +12,5 @@ add_triton_library(TileIRIR
   MLIRIR
   MLIRLLVMDialect
   TritonIR
+  TritonGPUIR
 )
